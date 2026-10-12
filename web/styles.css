@@ -344,6 +344,17 @@ legend { padding: 0; }
 .controls-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .result-count { color: var(--ink-2); font-size: var(--text-s); font-variant-numeric: tabular-nums; }
 
+/* Designer's integrated pending contract: reserve the count line; avoid flashing fast saves. */
+.controls-foot { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+.controls-foot .result-count, .controls-foot #navigation-pending { grid-area: 1 / 1; align-self: center; text-align: left; min-height: 0; }
+.controls-foot:has(#navigation-pending:not([hidden])) .result-count { visibility: hidden; }
+#add-activity[aria-disabled="true"], .evening-edit[aria-disabled="true"], #clear-filters[aria-describedby="navigation-pending"] { transition: opacity 160ms ease 220ms; }
+.chip input:disabled + span, .horizon-stop input:disabled + span { opacity: 0.55; transition: opacity 160ms ease 220ms; }
+.chip:has(input:disabled), .horizon-stop:has(input:disabled) { cursor: not-allowed; }
+.editor-form[data-pending] .choice input:disabled + span { color: var(--ink-2); background: var(--ground-raised); }
+#navigation-pending:not([hidden]) { animation: nav-pending-in 1ms 220ms both; }
+@keyframes nav-pending-in { from { opacity: 0; } to { opacity: 1; } }
+
 /* ---------- Programme (main list) ---------- */
 .programme { grid-area: programme; min-width: 0; }
 .programme-title {

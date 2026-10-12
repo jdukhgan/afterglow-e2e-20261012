@@ -206,8 +206,8 @@
     const explanation = $("#navigation-pending");
     explanation.hidden = !paused;
     explanation.textContent = paused ? (state.phase !== "ready"
-      ? "Adding and filters are paused until the evening list arrives. Use Try again if loading fails."
-      : "Adding, editing and filters are paused while your change is saved.") : "";
+      ? "Adding and filters wait for the list to load."
+      : "Adding, editing and filters pause while this saves.") : "";
     for (const input of [...dom.moodFilter.querySelectorAll("input"), ...dom.timeFilter.querySelectorAll("input")]) input.disabled = paused;
     for (const button of [dom.add, ...dom.list.querySelectorAll(".evening-edit")]) {
       button.setAttribute("aria-disabled", String(paused));

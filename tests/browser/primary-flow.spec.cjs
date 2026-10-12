@@ -87,7 +87,7 @@ test('status and delete failure preserve loaded data, retry and focus after unlo
   await page.route('**/api/activities/*', async route => { await held; await failure(route); });
   await row.getByRole('button', {name: 'Planned', exact: true}).click();
   await expect(row.locator('.status-feedback')).toContainText('Saving as planned');
-  await expect(page.locator('#navigation-pending')).toContainText('paused');
+  await expect(page.locator('#navigation-pending')).toContainText('pause while this saves');
   await expect(row.locator('.evening-edit')).toHaveAttribute('aria-disabled', 'true');
   expect(Math.abs((await row.boundingBox()).height - height)).toBeLessThan(1);
   release();
