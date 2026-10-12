@@ -1,8 +1,7 @@
 /* Afterglow web foundation.
  *
  * Components and the interaction controller are production code. Data flows
- * through one adapter with the shape below; the fixture adapter at the bottom
- * demonstrates states and is replaced by the Builder's API adapter.
+ * through the same-origin API adapter with the shape below.
  *
  *   adapter.list({ mood, max_duration })  -> Promise<Activity[]>
  *   adapter.create(fields)                -> Promise<Activity>
@@ -184,6 +183,7 @@
     phase: "loading", // loading | ready | error
     requestSeq: 0,
     statusPending: new Map(),
+    editorPending: false,
   };
   let adapter = null;
 
@@ -197,6 +197,33 @@
     if (state.filters.mood) query.mood = state.filters.mood;
     if (state.filters.maxDuration) query.max_duration = state.filters.maxDuration;
     return query;
+  }
+
+  const navigationPaused = () => state.phase !== "ready" || state.statusPending.size > 0 || state.editorPending;
+
+  function syncNavigation() {
+    const paused = navigationPaused();
+    const explanation = $("#navigation-pending");
+    explanation.hidden = !paused;
+    explanation.textContent = paused ? (state.phase !== "ready"
+      ? "Adding and filters are paused until the evening list arrives. Use Try again if loading fails."
+      : "Adding, editing and filters are paused while your change is saved.") : "";
+    for (const input of [...dom.moodFilter.querySelectorAll("input"), ...dom.timeFilter.querySelectorAll("input")]) input.disabled = paused;
+    for (const button of [dom.add, ...dom.list.querySelectorAll(".evening-edit")]) {
+      button.setAttribute("aria-disabled", String(paused));
+      if (paused) button.setAttribute("aria-describedby", "navigation-pending");
+      else button.removeAttribute("aria-describedby");
+    }
+    dom.clear.setAttribute("aria-disabled", String(paused || !filtersActive()));
+    if (paused) dom.clear.setAttribute("aria-describedby", "navigation-pending");
+    else dom.clear.removeAttribute("aria-describedby");
+  }
+
+  function beginMutation() {
+    // An in-flight GET contains an older snapshot and cannot replace a committed mutation.
+    ++state.requestSeq;
+    dom.list.removeAttribute("aria-busy");
+    syncNavigation();
   }
 
   // ---------- Render ----------
@@ -223,7 +250,7 @@
 
     renderListState(items);
     renderCount(items);
-    dom.clear.setAttribute("aria-disabled", String(!filtersActive()));
+    syncNavigation();
   }
 
   function renderListState(items) {
@@ -281,6 +308,7 @@
           action: { label: "Retry", run: load },
         });
       }
+      syncNavigation();
     } finally {
       if (seq === state.requestSeq) dom.list.removeAttribute("aria-busy");
     }
@@ -301,6 +329,7 @@
   }
 
   function setFilters(next) {
+    if (navigationPaused()) return;
     state.filters = { ...state.filters, ...next };
     syncFilterControls();
     render(); // instant local preview from known rows
@@ -308,7 +337,7 @@
   }
 
   function clearFilters({ focusHeading = false } = {}) {
-    if (!filtersActive()) return;
+    if (!filtersActive() || navigationPaused()) return;
     setFilters({ mood: "", maxDuration: 0 });
     if (focusHeading) dom.heading.focus();
     toast.show("Showing every evening.");
@@ -336,10 +365,11 @@
     const row = rowFor(id);
     if (!activity || !row || state.statusPending.has(id) || activity.status === status) return;
     state.statusPending.set(id, status);
+    beginMutation();
     setRowPending(row, status);
     try {
       const updated = await adapter.update(id, { status });
-      Object.assign(activity, updated);
+      upsertActivity(updated);
       state.statusPending.delete(id);
       render();
       const current = rowFor(id);
@@ -347,6 +377,7 @@
         setRowPending(current, null);
         setRowFeedback(current, byValue(STATUSES, updated.status).done, { tone: "success" });
       }
+      syncNavigation();
     } catch (error) {
       state.statusPending.delete(id);
       const current = rowFor(id);
@@ -354,6 +385,7 @@
         setRowPending(current, null);
         setRowFeedback(current, "Couldn’t change the status.", { tone: "error", retry: status });
       }
+      syncNavigation();
     }
   }
 
@@ -372,6 +404,7 @@
       target.focus();
       changeStatus(id, retry.dataset.retryStatus);
     } else if (event.target.closest("[data-action='edit']")) {
+      if (navigationPaused()) return;
       editor.open({ mode: "edit", activity: findActivity(id), trigger: event.target.closest("button") });
     }
   });
@@ -456,8 +489,12 @@
 
     function setPending(pending, label = "") {
       session.pending = pending;
+      state.editorPending = pending;
+      if (pending) beginMutation();
+      else syncNavigation();
       form.toggleAttribute("data-pending", pending);
       for (const name of textFields) form.elements[name].readOnly = pending;
+      for (const input of form.querySelectorAll("input[type='radio']")) input.disabled = pending;
       for (const button of form.querySelectorAll("button")) {
         if (pending) button.setAttribute("aria-disabled", "true");
         else button.removeAttribute("aria-disabled");
@@ -637,70 +674,48 @@
     state.activities.sort((a, b) => a.id - b.id);
   }
 
-  dom.add.addEventListener("click", () => editor.open({ mode: "create", trigger: dom.add }));
+  dom.add.addEventListener("click", () => {
+    if (!navigationPaused()) editor.open({ mode: "create", trigger: dom.add });
+  });
 
-  // ---------- Fixture adapter (demo only; Builder replaces with the API adapter) ----------
-  // URL options: ?latency=900  ?fail=load,save,status,delete,fields (each fails once)  ?empty=1
-  function createFixtureAdapter() {
-    const params = new URLSearchParams(location.search);
-    const latency = Number(params.get("latency") ?? 450);
-    const failures = new Set((params.get("fail") || "").split(",").filter(Boolean));
-    let store = null;
-    let nextId = 1;
-    const copy = (a) => ({ ...a });
-    const wait = () => new Promise((resolve) => setTimeout(resolve, latency));
-    const failOnce = (op, error) => {
-      if (failures.delete(op)) throw error;
-    };
-    async function ensureStore() {
-      if (store) return;
-      const response = await fetch("fixtures.json", { cache: "no-store" });
-      if (!response.ok) throw new AdapterError("Fixture unavailable", { status: response.status });
-      const data = await response.json();
-      store = params.has("empty") ? [] : data.activities.map(copy);
-      nextId = Math.max(0, ...data.activities.map((a) => a.id)) + 1;
+  // ---------- Same-origin API adapter ----------
+  function createApiAdapter() {
+    async function request(path, method = "GET", data) {
+      let response;
+      try {
+        response = await fetch(path, {
+          method,
+          headers: data === undefined ? {} : { "Content-Type": "application/json" },
+          body: data === undefined ? undefined : JSON.stringify(data),
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+      } catch {
+        throw new AdapterError("Afterglow could not be reached.");
+      }
+      if (response.status === 204) return null;
+      let body;
+      try { body = await response.json(); }
+      catch { throw new AdapterError("Afterglow sent an unreadable response.", {status: response.status}); }
+      if (!response.ok) throw new AdapterError(body.error?.message || "Afterglow could not finish that request.", {
+        status: response.status, fields: body.error?.fields || null,
+      });
+      return body;
     }
-    const unavailable = () => new AdapterError("Service unavailable", { status: 503 });
-    const fieldProblem = () =>
-      new AdapterError("Some details need another look.", { status: 400, fields: { place: "That place couldn’t be saved. Try a shorter name." } });
-
     return {
       async list(filters) {
-        await wait();
-        failOnce("load", unavailable());
-        await ensureStore();
-        const f = { mood: filters.mood || "", maxDuration: Number(filters.max_duration) || 0 };
-        return store.filter((a) => matchesFilters(a, f)).map(copy);
+        const query = new URLSearchParams(filters).toString();
+        return (await request(`/api/activities${query ? `?${query}` : ""}`)).activities;
       },
-      async create(fields) {
-        await wait();
-        failOnce("fields", fieldProblem());
-        failOnce("save", unavailable());
-        const activity = { id: nextId++, ...fields, status: "saved" };
-        store.push(activity);
-        return copy(activity);
-      },
-      async update(id, patch) {
-        await wait();
-        const statusOnly = Object.keys(patch).length === 1 && "status" in patch;
-        if (!statusOnly) failOnce("fields", fieldProblem());
-        failOnce(statusOnly ? "status" : "save", unavailable());
-        const activity = store.find((a) => a.id === id);
-        if (!activity) throw new AdapterError("That evening no longer exists.", { status: 404 });
-        Object.assign(activity, patch);
-        return copy(activity);
-      },
-      async remove(id) {
-        await wait();
-        failOnce("delete", unavailable());
-        store = store.filter((a) => a.id !== id);
-      },
+      async create(fields) { return (await request("/api/activities", "POST", fields)).activity; },
+      async update(id, patch) { return (await request(`/api/activities/${id}`, "PATCH", patch)).activity; },
+      async remove(id) { await request(`/api/activities/${id}`, "DELETE"); },
     };
   }
 
   // ---------- Boot ----------
   window.Afterglow = { LIMITS, MOODS, DURATIONS, STATUSES, AdapterError, validateDraft, codePoints };
-  adapter = createFixtureAdapter();
+  adapter = createApiAdapter();
   syncFilterControls();
   load();
 })();

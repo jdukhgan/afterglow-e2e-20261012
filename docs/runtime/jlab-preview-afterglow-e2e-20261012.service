@@ -1,0 +1,12 @@
+[Unit]
+Description=Afterglow retained development preview
+
+[Service]
+WorkingDirectory=/home/kandev/.kandev/tasks/task-fff30f6d-eb79-493a-a4ab-31a8915aab47
+ExecStart=/usr/bin/python3 /home/kandev/.kandev/tasks/task-fff30f6d-eb79-493a-a4ab-31a8915aab47/server.py --port 8767 --db /home/kandev/.kandev/tasks/task-fff30f6d-eb79-493a-a4ab-31a8915aab47/.kandev/data/activities.sqlite3
+Restart=on-failure
+RestartSec=2s
+UMask=0077
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,6 @@
+__pycache__/
+*.sqlite3
+*.sqlite3-*
+.kandev/browser-results/
+.kandev/evidence/
+test-results/
