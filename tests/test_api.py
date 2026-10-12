@@ -6,6 +6,7 @@ import sys
 import tempfile
 import time
 import unittest
+import sqlite3
 from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,7 +33,7 @@ class API(unittest.TestCase):
         self.temp.cleanup()
 
     def request(self, method='GET', path='/api/activities', data=None, headers=None, raw=None):
-        connection = http.client.HTTPConnection('127.0.0.1', self.port, timeout=5)
+        connection = http.client.HTTPConnection('127.0.0.1', self.port, timeout=10)
         body = raw if raw is not None else json.dumps(data) if data is not None else None
         h = {'Content-Type': 'application/json'} if body is not None else {}
         h.update(headers or {})
@@ -98,6 +99,22 @@ class API(unittest.TestCase):
 
     def create_request(self, headers):
         return self.request('POST', data={'title': 'Evening', 'mood': 'quiet', 'duration': 30}, headers=headers)
+
+    def test_unrepresentable_unicode_and_shared_whitespace(self):
+        self.assertEqual(self.create(title='\ud800')[0], 400)
+        self.assertEqual(self.create(title='\ufeff \ufeff')[0], 400)
+        self.assertEqual(self.create(title='\ufeffEvening\ufeff')[1]['activity']['title'], 'Evening')
+
+    def test_real_storage_failure_is_generic_and_atomic(self):
+        before = self.request()[1]
+        with sqlite3.connect(self.db) as lock:
+            lock.execute('BEGIN EXCLUSIVE')
+            status, body = self.create()
+            self.assertEqual(status, 500)
+            self.assertIn('try again', body['error']['message'])
+            self.assertNotIn('sqlite', json.dumps(body).lower())
+            lock.rollback()
+        self.assertEqual(self.request()[1], before)
 
 
 if __name__ == '__main__':

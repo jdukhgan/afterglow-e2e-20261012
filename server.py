@@ -14,6 +14,8 @@ WEB = ROOT / 'web'
 LIMITS = {'title': 120, 'place': 160, 'note': 1000}
 ENUMS = {'mood': ('quiet', 'social', 'outdoors'), 'duration': (30, 60, 120), 'status': ('saved', 'planned', 'tried')}
 FIELDS = (*LIMITS, *ENUMS)
+# Match ECMAScript String.trim used by the Designer's client validator.
+TRIM_CHARS = '\u0009\u000a\u000b\u000c\u000d\u0020\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff'
 
 
 class Problem(Exception):
@@ -34,7 +36,12 @@ def validate(data, create=False):
         if not isinstance(item, str):
             fields[key] = 'Enter text for this field.'
             continue
-        item = item.strip()
+        try:
+            item.encode('utf-8')
+        except UnicodeError:
+            fields[key] = 'Enter valid Unicode text.'
+            continue
+        item = item.strip(TRIM_CHARS)
         if key == 'title' and not item:
             fields[key] = 'Give this evening a title.'
         elif len(item) > limit:
