@@ -1,0 +1,67 @@
+{
+  "activities": [
+    {
+      "id": 1,
+      "title": "Blue-hour wander",
+      "mood": "outdoors",
+      "duration": 30,
+      "place": "Fictional canal path",
+      "note": "Take the slow way home",
+      "status": "saved"
+    },
+    {
+      "id": 2,
+      "title": "Lantern-lit reading hour",
+      "mood": "quiet",
+      "duration": 60,
+      "place": "Marrow Street reading room",
+      "note": "One chapter of the green-spined novel, phone left in the coat pocket.",
+      "status": "planned"
+    },
+    {
+      "id": 3,
+      "title": "Rooftop chess with Ines",
+      "mood": "social",
+      "duration": 120,
+      "place": "Halden Court roof garden",
+      "note": "",
+      "status": "tried"
+    },
+    {
+      "id": 4,
+      "title": "Night-market dumpling crawl",
+      "mood": "social",
+      "duration": 60,
+      "place": "Vell Arcade night market",
+      "note": "Start at the stall with the paper lanterns, share three plates, finish with sesame balls from the cart by the east gate. Bring small change and a friend who says yes to everything.",
+      "status": "saved"
+    },
+    {
+      "id": 5,
+      "title": "Stargazing from the old reservoir ridge",
+      "mood": "outdoors",
+      "duration": 120,
+      "place": "Coldwater reservoir ridge",
+      "note": "Thermos of cocoa, red torch, the folding star chart.",
+      "status": "planned"
+    },
+    {
+      "id": 6,
+      "title": "Tea and a single record",
+      "mood": "quiet",
+      "duration": 30,
+      "place": "",
+      "note": "Side A only. Lights low.",
+      "status": "tried"
+    },
+    {
+      "id": 7,
+      "title": "Sketch the bridge lights until the last tram rolls past",
+      "mood": "quiet",
+      "duration": 120,
+      "place": "Pell Bridge, east bank steps",
+      "note": "Soft pencil, the small sketchbook, gloves without fingertips.",
+      "status": "saved"
+    }
+  ]
+}
