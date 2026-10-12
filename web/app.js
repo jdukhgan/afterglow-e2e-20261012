@@ -219,10 +219,13 @@
     else dom.clear.removeAttribute("aria-describedby");
   }
 
-  function beginMutation() {
-    // An in-flight GET contains an older snapshot and cannot replace a committed mutation.
+  function invalidateLoads() {
     ++state.requestSeq;
     dom.list.removeAttribute("aria-busy");
+  }
+
+  function beginMutation() {
+    invalidateLoads();
     syncNavigation();
   }
 
@@ -587,6 +590,7 @@
       setPending(true, "Deleting…");
       try {
         await adapter.remove(session.id);
+        invalidateLoads();
         const removedTitle = findActivity(session.id)?.title ?? "evening";
         state.activities = state.activities.filter((a) => a.id !== session.id);
         setPending(false);
@@ -668,6 +672,9 @@
   })();
 
   function upsertActivity(saved) {
+    // Retry may start a GET while a write is pending. Invalidate that snapshot
+    // at commit as well as at mutation start so it cannot undo this response.
+    invalidateLoads();
     const index = state.activities.findIndex((a) => a.id === saved.id);
     if (index === -1) state.activities.push(saved);
     else state.activities[index] = saved;

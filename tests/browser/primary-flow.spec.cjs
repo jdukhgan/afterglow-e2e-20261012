@@ -170,3 +170,78 @@ test('phone keyboard, validation, empty recovery and reduced motion', async ({pa
   await page.getByRole('button', {name: 'Save evening', exact: true}).click();
   await expect(rows(page)).toHaveCount(1);
 });
+
+for (const mutation of ['status', 'save', 'delete']) {
+  test(`refresh Retry snapshot begun during pending ${mutation} cannot undo commit`, async ({page, request}) => {
+    await page.goto('/');
+    await expect(rows(page)).toHaveCount(7);
+    await page.route('**/api/activities?*', failure);
+    await page.locator('#time-filter label').filter({hasText: '2 hours'}).click();
+    await expect(page.locator('#toast')).toContainText('Couldn’t refresh');
+    await page.unroute('**/api/activities?*');
+    const row = rows(page).first();
+    const id = await row.getAttribute('data-id');
+    let releaseMutation, releaseRead, captured;
+    const mutationHeld = new Promise(resolve => releaseMutation = resolve);
+    const readHeld = new Promise(resolve => releaseRead = resolve);
+    await page.route('**/api/activities/*', async route => {
+      await mutationHeld;
+      await route.continue();
+    });
+    await page.route('**/api/activities?*', async route => {
+      captured = await (await route.fetch()).json();
+      await readHeld;
+      await route.fulfill({json: captured});
+    });
+    if (mutation === 'status') {
+      await row.getByRole('button', {name: 'Planned', exact: true}).click();
+      await expect(row.locator('.status-feedback')).toContainText('Saving as planned');
+    } else {
+      await row.locator('.evening-edit').click();
+      if (mutation === 'save') {
+        await page.locator('#field-title').fill('Committed title');
+        await page.getByRole('button', {name: 'Save changes', exact: true}).click();
+      } else {
+        await page.getByRole('button', {name: 'Delete', exact: true}).click();
+        await page.getByRole('button', {name: 'Delete', exact: true}).click();
+      }
+      await expect(page.locator('#editor-pending')).toBeVisible();
+    }
+    // The modal makes the toast inert for editor actions; invoke the same read
+    // entry point directly to verify the shared save/delete commit boundary too.
+    if (mutation === 'status') await page.locator('#toast .toast-action').click();
+    else await page.locator('#toast .toast-action').evaluate(button => button.click());
+    await expect.poll(() => Boolean(captured)).toBe(true);
+    expect(captured.activities.find(a => String(a.id) === id).status).toBe('saved');
+    releaseMutation();
+    const current = page.locator(`.evening[data-id="${id}"]`);
+    if (mutation === 'status') await expect(current).toHaveAttribute('data-status', 'planned');
+    else if (mutation === 'save') await expect(current.locator('.evening-title')).toHaveText('Committed title');
+    else await expect(current).toHaveCount(0);
+    const staleResponse = page.waitForResponse(response => response.request().method() === 'GET' && response.url().includes('?'));
+    releaseRead();
+    await staleResponse;
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await expect(page.locator('#activity-list')).not.toHaveAttribute('aria-busy', 'true');
+    const persisted = (await (await request.get('/api/activities')).json()).activities.find(a => String(a.id) === id);
+    if (mutation === 'status') {
+      expect(persisted.status).toBe('planned');
+      await expect(current).toHaveAttribute('data-status', 'planned');
+    } else if (mutation === 'save') {
+      expect(persisted.title).toBe('Committed title');
+      await expect(current.locator('.evening-title')).toHaveText('Committed title');
+    } else {
+      expect(persisted).toBeUndefined();
+      await expect(current).toHaveCount(0);
+    }
+    await page.unroute('**/api/activities?*');
+    // A later failed read must still offer a usable Retry after controls unlock.
+    await page.route('**/api/activities?*', failure);
+    await page.locator('#time-filter label').filter({hasText: '1 hour'}).click();
+    await expect(page.locator('#toast')).toContainText('Couldn’t refresh');
+    await page.unroute('**/api/activities?*');
+    await page.getByRole('button', {name: 'Retry', exact: true}).click();
+    await expect(page.locator('#activity-list')).not.toHaveAttribute('aria-busy', 'true');
+    await expect(page.locator('#toast')).not.toBeVisible();
+  });
+}
